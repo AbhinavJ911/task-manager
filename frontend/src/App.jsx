@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
+import Pricing from "./pages/Pricing";
+import SubscriptionSuccess from "./pages/SubscriptionSuccess";
 import PrivateRoute from "./routes/PrivateRoute";
 
 export default function App() {
@@ -16,6 +18,22 @@ export default function App() {
           element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/pricing"
+          element={
+            <PrivateRoute>
+              <Pricing />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/subscription/success"
+          element={
+            <PrivateRoute>
+              <SubscriptionSuccess />
             </PrivateRoute>
           }
         />
