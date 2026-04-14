@@ -12,8 +12,9 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "https://task-manager-git-main-abhinav-js-projects.vercel.app",
-    ],
+      process.env.FRONTEND_URL,
+      /^https:\/\/task-manager(-.*)?\.vercel\.app$/i,
+    ].filter(Boolean),
     credentials: true,
   })
 );
