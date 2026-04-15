@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const session = require("express-session");
+const passport = require("./config/passport");
 const connectDB = require("./config/db");
 
 const app = express();
@@ -20,6 +22,20 @@ app.use(
 );
 
 app.use(express.json());
+
+/**
+ * Session + Passport (needed for Google OAuth flow)
+ */
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "fallback_secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 60000 },
+  })
+);
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use("/auth", require("./routes/auth.routes"));
 app.use("/tasks", require("./routes/task.routes"));

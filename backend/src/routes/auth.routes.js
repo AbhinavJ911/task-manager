@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const passport = require("passport");
 const User = require("../models/User.model");
 const authMiddleware = require("../middleware/auth.middleware");
 
@@ -31,6 +32,11 @@ router.post("/signup", async (req, res) => {
 router.post("/login", async (req, res) => {
   const user = await User.findOne({ email: req.body.email });
   if (!user) return res.status(400).json({ message: "User not found" });
+
+  // If user signed up via Google and has no password
+  if (!user.password) {
+    return res.status(400).json({ message: "Please use Google Sign-In for this account" });
+  }
 
   const match = await bcrypt.compare(req.body.password, user.password);
   if (!match) return res.status(400).json({ message: "Wrong password" });
@@ -67,4 +73,24 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * Google OAuth Routes
+ */
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { failureRedirect: "/login", session: false }),
+  (req, res) => {
+    // Generate JWT for the authenticated user
+    const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET);
+    const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
+    res.redirect(`${frontendURL}/auth/google/callback?token=${token}`);
+  }
+);
+
 module.exports = router;
+
