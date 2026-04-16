@@ -1,0 +1,21 @@
+# ── Backend Dockerfile ──
+# Uses Node.js 20 Alpine for a small image size
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy dependency files first (better caching)
+COPY backend/package.json backend/package-lock.json ./
+
+# Install production dependencies only
+RUN npm ci --omit=dev
+
+# Copy backend source code
+COPY backend/src ./src
+
+# Expose the backend port
+EXPOSE 5000
+
+# Start the server
+CMD ["node", "src/server.js"]
