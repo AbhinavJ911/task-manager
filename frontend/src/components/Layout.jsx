@@ -16,17 +16,20 @@ import clsx from "clsx";
 export default function Layout({ children }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [plan, setPlan] = useState("free");
+    const [user, setUser] = useState(null);
+    const [profileOpen, setProfileOpen] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
 
     useEffect(() => {
-        // Fetch current user plan
+        // Fetch current user and plan
         const fetchStatus = async () => {
             try {
-                const res = await axios.get("/subscription/status");
+                const res = await axios.get("/auth/me");
+                setUser(res.data);
                 setPlan(res.data.plan || "free");
             } catch (err) {
-                console.error("Failed to fetch subscription status:", err);
+                console.error("Failed to fetch user status:", err);
             }
         };
         fetchStatus();
@@ -161,8 +164,41 @@ export default function Layout({ children }) {
                     </button>
 
                     <div className="flex items-center gap-5 ml-auto">
-                        <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700 font-extrabold border border-indigo-200 shadow-sm cursor-pointer hover:shadow-md transition-all hover:scale-105">
-                            U
+                        <div className="relative">
+                            <button
+                                onClick={() => setProfileOpen(!profileOpen)}
+                                className="h-10 w-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700 font-extrabold border border-indigo-200 shadow-sm cursor-pointer hover:shadow-md transition-all hover:scale-105"
+                            >
+                                {user ? user.name.charAt(0).toUpperCase() : "U"}
+                            </button>
+
+                            {profileOpen && user && (
+                                <>
+                                    {/* Invisible overlay for click outside */}
+                                    <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+                                    
+                                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-3">
+                                            <div className="h-10 w-10 flex items-center justify-center rounded-full bg-indigo-50 text-indigo-600 font-bold shrink-0">
+                                                {user.name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div className="overflow-hidden">
+                                                <p className="text-sm font-bold text-gray-900 truncate">{user.name}</p>
+                                                <p className="text-xs font-medium text-gray-500 truncate">{user.email}</p>
+                                            </div>
+                                        </div>
+                                        <div className="p-2">
+                                            <button
+                                                onClick={handleLogout}
+                                                className="w-full text-left px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-3 font-semibold"
+                                            >
+                                                <LogOut size={16} />
+                                                Sign out
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </header>
