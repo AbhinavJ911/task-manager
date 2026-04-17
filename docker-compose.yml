@@ -6,8 +6,9 @@ services:
       dockerfile: Dockerfile.backend
     env_file:
       - ./backend/.env
-    ports:
-      - "5000:5000"
+    # Removed ports so docker can scale multiple instances dynamically
+    expose:
+      - "5000"
     restart: unless-stopped
 
   # ── Frontend (React + Nginx) ──
@@ -16,10 +17,25 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_URL: "http://localhost:5000"
-        VITE_STRIPE_PUBLIC_KEY: "${VITE_STRIPE_PUBLIC_KEY}"
-    ports:
-      - "3000:80"
+        # Pass the backend URL through build args
+        VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
+        VITE_STRIPE_PUBLIC_KEY: "${VITE_STRIPE_PUBLIC_KEY:-}"
+    # Removed ports so docker can scale multiple instances dynamically
+    expose:
+      - "80"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  # ── Nginx Load Balancer (ASG local simulation) ──
+  loadbalancer:
+    image: nginx:alpine
+    volumes:
+      - ./nginx-loadbalancer.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3000:3000"   # Expose front-end LB
+      - "5000:5000"   # Expose back-end LB
+    depends_on:
+      - backend
+      - frontend
     restart: unless-stopped

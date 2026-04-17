@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation Template for Task-Manager Auto Scaling Group Architecture'
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where the ASG will be deployed
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of Public Subnets for the Application Load Balancer
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of Private Subnets for the Auto Scaling Group instances
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t3.small, t3.medium, t2.micro]
+    Description: EC2 instance type for the application
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: The ID of the AMI to use for EC2 instances (Should have Docker installed)
+  MinDesiredCapacity:
+    Type: Number
+    Default: 1
+    Description: Minimum and Default number of instances
+  MaxCapacity:
+    Type: Number
+    Default: 5
+    Description: Maximum number of instances allowed during scale-out
+
+Resources:
+  # ── Security Group for Load Balancer ──
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP traffic from the internet
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # ── Security Group for EC2 ASG Instances ──
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic strictly from the Application Load Balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000   # Assuming frontend served on 3000 locally
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 5000   # Assuming backend API served on 5000
+          ToPort: 5000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  # ── Application Load Balancer (ALB) ──
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: task-manager-alb
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Scheme: internet-facing
+
+  # ── Target Groups for ALB ──
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: task-manager-frontend-tg
+      VpcId: !Ref VpcId
+      Port: 3000
+      Protocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      TargetType: instance
+
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: task-manager-backend-tg
+      VpcId: !Ref VpcId
+      Port: 5000
+      Protocol: HTTP
+      HealthCheckPath: /api/health  # Update this based on the actual health check route
+      HealthCheckIntervalSeconds: 30
+      TargetType: instance
+
+  # ── ALB Listener Rules ──
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  # Route /api to the backend instances
+  BackendListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 10
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+  # ── EC2 Launch Template ──
+  AppLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: task-manager-lt
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        ImageId: !Ref AmiId
+        SecurityGroupIds:
+          - !Ref InstanceSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            yum update -y
+            # Install git, docker, and docker-compose
+            yum install -y git docker
+            systemctl start docker
+            systemctl enable docker
+            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            
+            # Create app directory and clone github repository
+            mkdir -p /app
+            cd /app
+            git clone https://github.com/AbhinavJ911/task-manager.git .
+            
+            # Configure Frontend environment build args
+            echo "VITE_API_URL=http://${ApplicationLoadBalancer.DNSName}" > frontend/.env
+            
+            # Spin up the environment scaled via docker-compose (simulating ASG nodes)
+            docker-compose up -d --scale backend=3 --build
+
+  # ── Auto Scaling Group ──
+  AppAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref PrivateSubnetIds
+      LaunchTemplate:
+        LaunchTemplateId: !Ref AppLaunchTemplate
+        Version: !GetAtt AppLaunchTemplate.LatestVersionNumber
+      MinSize: "1"
+      MaxSize: !Ref MaxCapacity
+      DesiredCapacity: !Ref MinDesiredCapacity
+      TargetGroupARNs:
+        - !Ref FrontendTargetGroup
+        - !Ref BackendTargetGroup
+      Tags:
+        - Key: Name
+          Value: task-manager-instance
+          PropagateAtLaunch: 'true'
+
+  # ── Scaledown / Scaleup Policies (CPU-based) ──
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AppAutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 70.0 # Scale out when CPU hits 70%
+
+Outputs:
+  ALBEndpoint:
+    Description: The public URL of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
