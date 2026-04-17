@@ -133,23 +133,21 @@ Resources:
           Fn::Base64: !Sub |
             #!/bin/bash
             yum update -y
-            # Install git, docker, and docker-compose
-            yum install -y git docker
+            # Install and start docker
+            yum install -y docker
             systemctl start docker
             systemctl enable docker
-            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            chmod +x /usr/local/bin/docker-compose
             
-            # Create app directory and clone github repository
-            mkdir -p /app
-            cd /app
-            git clone https://github.com/AbhinavJ911/task-manager.git .
+            # Create a shared network for the containers
+            docker network create task_network
             
-            # Configure Frontend environment build args
-            echo "VITE_API_URL=http://${ApplicationLoadBalancer.DNSName}" > frontend/.env
+            # Pull your predefined Docker images from your registry (Docker Hub/ECR)
+            docker run -d --name backend --network task_network --restart always -p 5000:5000 abh24680/task-manager-backend:latest
             
-            # Spin up the environment scaled via docker-compose (simulating ASG nodes)
-            docker-compose up -d --scale backend=3 --build
+            # For frontend, we inject the dynamic Load Balancer URL at runtime
+            docker run -d --name frontend --network task_network --restart always -p 3000:80 \
+                -e VITE_API_URL=http://${ApplicationLoadBalancer.DNSName} \
+                abh24680/task-manager-frontend:latest
 
   # ── Auto Scaling Group ──
   AppAutoScalingGroup:
