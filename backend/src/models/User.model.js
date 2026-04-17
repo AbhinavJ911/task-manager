@@ -13,6 +13,8 @@ const userSchema = new mongoose.Schema({
   stripeCustomerId: { type: String, default: null },
   subscriptionId: { type: String, default: null },
   planExpiresAt: { type: Date, default: null },
+  loginOtp: { type: String, default: null },
+  otpExpiresAt: { type: Date, default: null },
 });
 
 module.exports = mongoose.model("User", userSchema);

@@ -6,6 +6,8 @@ import { LogIn, ArrowRight } from "lucide-react";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState("credentials"); // 'credentials' or 'otp'
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -15,13 +17,20 @@ export default function Login() {
 
     try {
       setLoading(true);
-      const res = await axios.post("/auth/login", {
-        email,
-        password,
-      });
-
-      localStorage.setItem("token", res.data.token);
-      navigate("/");
+      if (step === "credentials") {
+        const res = await axios.post("/auth/login", { email, password });
+        if (res.data.requireOtp) {
+           setStep("otp");
+           alert(res.data.message || "OTP sent to your email");
+        } else {
+           localStorage.setItem("token", res.data.token);
+           navigate("/");
+        }
+      } else if (step === "otp") {
+        const res = await axios.post("/auth/verify-otp", { email, otp });
+        localStorage.setItem("token", res.data.token);
+        navigate("/");
+      }
     } catch (error) {
       console.error("Login failed", error);
       const errorMsg = error.response?.data?.message || "Invalid credentials";
@@ -45,37 +54,62 @@ export default function Login() {
           </div>
 
           <form onSubmit={login} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
-              <input
-                type="email"
-                required
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+            {step === "credentials" ? (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <input
+                    type="email"
+                    required
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
-              <input
-                type="password"
-                required
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Password</label>
+                  <input
+                    type="password"
+                    required
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Verification Code</label>
+                <input
+                  type="text"
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-center tracking-widest text-xl font-bold"
+                  placeholder="000000"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                />
+                <p className="mt-2 text-sm text-gray-500 text-center">
+                  Check your email ({email}) for the 6-digit code.
+                </p>
+                <div className="mt-4 flex justify-center">
+                  <button type="button" onClick={() => setStep("credentials")} className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors">
+                    Back to login
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={loading}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50"
             >
-              {loading ? "Signing in..." : "Sign in"}
-              {!loading && <ArrowRight size={18} />}
+              {loading ? (step === "credentials" ? "Sending OTP..." : "Verifying...") : (step === "credentials" ? "Sign in" : "Verify Code")}
+              {!loading && step === "credentials" && <ArrowRight size={18} />}
             </button>
           </form>
 
